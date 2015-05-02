@@ -168,6 +168,7 @@ func (c *appContext) newLocalAuth(email, password string) (string, error) {
 
 //Handlers
 func landingHandler(w http.ResponseWriter, r *http.Request) {
+  renderTemplate(w, "index.html", "")
 }
 
 func (c *appContext) userHandler(w http.ResponseWriter, r *http.Request) {
@@ -215,11 +216,9 @@ func renderTemplate(w http.ResponseWriter, tmpl string, q interface{}) {
 	}
 }
 
-
-func init(){
-  log.SetFlags(log.LstdFlags | log.Lshortfile)
+func init() {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
 }
-
 
 func main() {
 	MONGOSERVER := os.Getenv("MONGOLAB_URI")
