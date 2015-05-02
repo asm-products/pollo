@@ -215,20 +215,26 @@ func renderTemplate(w http.ResponseWriter, tmpl string, q interface{}) {
 	}
 }
 
+
+func init(){
+  log.SetFlags(log.LstdFlags | log.Lshortfile)
+}
+
+
 func main() {
 	MONGOSERVER := os.Getenv("MONGOLAB_URI")
 	if MONGOSERVER == "" {
 		fmt.Println("No mongo server address set, resulting to default address")
 		MONGOSERVER = "localhost"
 	}
-	fmt.Println("MONGOSERVER is ", MONGOSERVER)
+	log.Println("MONGOSERVER is ", MONGOSERVER)
 
 	MONGODB := os.Getenv("MONGODB")
 	if MONGODB == "" {
 		fmt.Println("No Mongo database name set, resulting to default")
 		MONGODB = "pollo"
 	}
-	fmt.Println("MONGODB is ", MONGODB)
+	log.Println("MONGODB is ", MONGODB)
 
 	session, err := mgo.Dial(MONGOSERVER)
 	if err != nil {
@@ -248,12 +254,12 @@ func main() {
 
 	PORT := os.Getenv("PORT")
 	if PORT == "" {
-		fmt.Println("No Global port has been defined, using default")
+		log.Println("No Global port has been defined, using default")
 
 		PORT = "8080"
 
 	}
 
-	fmt.Println("serving on http://localhost:" + PORT)
+	log.Println("serving on http://localhost:" + PORT)
 	log.Fatal(http.ListenAndServe(PORT, http.DefaultServeMux))
 }
