@@ -216,7 +216,7 @@ func renderTemplate(w http.ResponseWriter, tmpl string, q interface{}) {
 }
 
 func main() {
-	MONGOSERVER := os.Getenv("MONGOSERVER")
+	MONGOSERVER := os.Getenv("MONGOLAB_URI")
 	if MONGOSERVER == "" {
 		fmt.Println("No mongo server address set, resulting to default address")
 		MONGOSERVER = "localhost"
