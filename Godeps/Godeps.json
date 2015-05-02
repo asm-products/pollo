@@ -1,0 +1,26 @@
+{
+	"ImportPath": "github.com/tonyalaribe/pollo",
+	"GoVersion": "go1.4",
+	"Deps": [
+		{
+			"ImportPath": "github.com/gorilla/context",
+			"Rev": "215affda49addc4c8ef7e2534915df2c8c35c6cd"
+		},
+		{
+			"ImportPath": "github.com/justinas/alice",
+			"Rev": "f4d49920e0f2bd6aa717fccd6cfae564ce09a697"
+		},
+		{
+			"ImportPath": "golang.org/x/crypto/bcrypt",
+			"Rev": "632d287f9f3f54b09809eebbd3cacbcb00b9f2fc"
+		},
+		{
+			"ImportPath": "golang.org/x/crypto/blowfish",
+			"Rev": "632d287f9f3f54b09809eebbd3cacbcb00b9f2fc"
+		},
+		{
+			"ImportPath": "gopkg.in/mgo.v2",
+			"Rev": "e2e914857713db7497cca2bd7fc0b030fc9cb22d"
+		}
+	]
+}
