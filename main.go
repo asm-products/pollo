@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"text/template"
 	"time"
 
 	"github.com/gorilla/context"
@@ -166,6 +167,9 @@ func (c *appContext) newLocalAuth(email, password string) (string, error) {
 }
 
 //Handlers
+func landingHandler(w http.ResponseWriter, r *http.Request) {
+}
+
 func (c *appContext) userHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "POST":
@@ -196,6 +200,21 @@ func (c *appContext) userHandler(w http.ResponseWriter, r *http.Request) {
 
 }
 
+//pre parse the template files, and store them in memory. Fail if
+//they're not found
+var templates = template.Must(template.ParseFiles("templates/index.html"))
+
+//renderTemplate is simply a helper function that takes in the response writer
+//interface, the template file name and the data to be passed in, as an
+//interface. It causes an internal server error if any of the templates is not
+//found. Better fail now than fail later, or display rubbish.
+func renderTemplate(w http.ResponseWriter, tmpl string, q interface{}) {
+	err := templates.ExecuteTemplate(w, tmpl, q)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
 func main() {
 	MONGOSERVER := os.Getenv("MONGOSERVER")
 	if MONGOSERVER == "" {
@@ -221,8 +240,11 @@ func main() {
 	appC := appContext{session.DB(MONGODB)}
 
 	cH := alice.New(context.ClearHandler, loggingHandler, recoverHandler, acceptHandler)
-
+	//serve assets
+	fs := http.FileServer(http.Dir("templates/assets/"))
+	http.Handle("/assets/", http.StripPrefix("/assets/", fs))
 	http.Handle("/me", cH.ThenFunc(appC.userHandler))
+	http.HandleFunc("/", landingHandler)
 
 	PORT := os.Getenv("PORT")
 	if PORT == "" {
