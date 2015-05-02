@@ -261,5 +261,5 @@ func main() {
 	}
 
 	log.Println("serving on http://localhost:" + PORT)
-	log.Fatal(http.ListenAndServe(PORT, http.DefaultServeMux))
+	log.Fatal(http.ListenAndServe(":"+PORT, http.DefaultServeMux))
 }
