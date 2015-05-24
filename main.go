@@ -238,7 +238,8 @@ func main() {
 
 	auth, err := aws.EnvAuth()
 	if err != nil {
-		panic(err)
+		//panic(err)
+		log.Println("no aws ish")
 	}
 	s := s3.New(auth, aws.USWest2)
 	s3bucket := s.Bucket(AWSBucket)
