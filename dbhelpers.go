@@ -93,9 +93,22 @@ func (c *appContext) newPollHandler(w http.ResponseWriter, r *http.Request) {
 	err = polls.Insert(p)
 
 	if err != nil {
+    		log.Println(err)
+    		err = json.NewEncoder(w).Encode(struct{
+          Message string
+        }{err.Error()})
+
+    	if err != nil {
+    		log.Println(err)
+    	}
+    		
+	}
+err = json.NewEncoder(w).Encode(struct{
+  Message string
+}{"Successful"})
+	if err != nil {
 		log.Println(err)
 	}
-
 	
 }
 func (c *appContext) pollResultsHandler(w http.ResponseWriter, r *http.Request) {
