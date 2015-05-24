@@ -2,18 +2,21 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 	"text/template"
-	"time"
 
 	"github.com/gorilla/context"
 	"github.com/justinas/alice"
+	"github.com/mitchellh/goamz/aws"
+	"github.com/mitchellh/goamz/s3"
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/oauth2"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
+	"gopkg.in/redis.v2"
 )
 
 const (
@@ -23,7 +26,18 @@ const (
 )
 
 type appContext struct {
-	db *mgo.Database
+	db        *mgo.Database
+	verifyKey []byte
+	signKey   []byte
+	token     string
+
+	login      string
+	fbclientid string
+	fbsecret   string
+	domain     string
+
+	bucket *s3.Bucket
+	redis  *redis.Client
 }
 
 type user struct {
@@ -34,11 +48,6 @@ type user struct {
 	Name     string
 	Provider string
 	Email    string
-}
-type lookUp struct {
-	Provider       string
-	IDFromProvider string
-	UserID         string
 }
 
 // Errors
@@ -78,74 +87,6 @@ var (
 	ErrInternalServer = &Error{"internal_server_error", 500, "Internal Server Error", "Something went wrong."}
 )
 
-//Middlewares
-
-func loggingHandler(next http.Handler) http.Handler {
-	fn := func(w http.ResponseWriter, r *http.Request) {
-		t1 := time.Now()
-		next.ServeHTTP(w, r)
-		t2 := time.Now()
-		log.Printf("[%s] %q %v\n", r.Method, r.URL.String(), t2.Sub(t1))
-	}
-
-	return http.HandlerFunc(fn)
-}
-
-func recoverHandler(next http.Handler) http.Handler {
-	fn := func(w http.ResponseWriter, r *http.Request) {
-		defer func() {
-			if err := recover(); err != nil {
-				log.Printf("panic: %+v", err)
-				WriteError(w, ErrInternalServer)
-			}
-		}()
-
-		next.ServeHTTP(w, r)
-	}
-
-	return http.HandlerFunc(fn)
-}
-
-func acceptHandler(next http.Handler) http.Handler {
-	fn := func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Accept") != "application/vnd.api+json" {
-			WriteError(w, ErrNotAcceptable)
-			return
-		}
-
-		next.ServeHTTP(w, r)
-	}
-
-	return http.HandlerFunc(fn)
-}
-
-//DB helpers
-
-func (c *appContext) newUser(u *user) (string, error) {
-	users := c.db.C("users")
-	err := users.Insert(u)
-
-	if err != nil {
-		return "", err
-	}
-
-	lookup := &lookUp{
-		Provider:       u.Provider,
-		IDFromProvider: u.ID,
-		UserID:         u.UserID,
-	}
-	log.Println("struct")
-	log.Println(lookup)
-
-	l := c.db.C("lookup")
-	err = l.Insert(lookup)
-
-	if err != nil {
-		return "", err
-	}
-	return u.UserID, nil
-}
-
 func (c *appContext) newLocalAuth(email, password string) (string, error) {
 	phash, err := bcrypt.GenerateFromPassword([]byte(password), Cost)
 	if err != nil {
@@ -168,14 +109,15 @@ func (c *appContext) newLocalAuth(email, password string) (string, error) {
 
 //Handlers
 func landingHandler(w http.ResponseWriter, r *http.Request) {
-  renderTemplate(w, "index.html", "")
+	renderTemplate(w, "index.html", "")
 }
 
 func (c *appContext) userHandler(w http.ResponseWriter, r *http.Request) {
+	log.Println("user handler")
 	switch r.Method {
 	case "POST":
 		r.ParseForm()
-		data := &user{}
+		data := User{}
 		err := json.NewDecoder(r.Body).Decode(data)
 		if err != nil {
 			log.Println(err)
@@ -186,11 +128,11 @@ func (c *appContext) userHandler(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				log.Println(err)
 			}
-			data.UserID = id
+			data.ID = id
 
 		}
 
-		ID, err := c.newUser(data)
+		ID, err := c.NewUser(&data, "facebook")
 		if err != nil {
 			log.Println(err)
 		}
@@ -220,35 +162,110 @@ func init() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 }
 
-func main() {
-	MONGOSERVER := os.Getenv("MONGOLAB_URI")
+func checks() (MONGOSERVER, MONGODB string, Public []byte, Private []byte, FBURL, FBClientID, FBClientSecret, RootURL, AWSBucket string) {
+
+	MONGOSERVER = os.Getenv("MONGOLAB_URI")
 	if MONGOSERVER == "" {
-		fmt.Println("No mongo server address set, resulting to default address")
+		log.Println("No mongo server address set, resulting to default address")
 		MONGOSERVER = "localhost"
 	}
 	log.Println("MONGOSERVER is ", MONGOSERVER)
 
-	MONGODB := os.Getenv("MONGODB")
+	MONGODB = os.Getenv("MONGODB")
 	if MONGODB == "" {
-		fmt.Println("No Mongo database name set, resulting to default")
+		log.Println("No Mongo database name set, resulting to default")
 		MONGODB = "pollo"
 	}
 	log.Println("MONGODB is ", MONGODB)
 
+	AWSBucket = os.Getenv("AWSBucket")
+	if AWSBucket == "" {
+		log.Println("No AWSBucket set, resulting to default")
+		AWSBucket = "pollo"
+	}
+	log.Println("AWSBucket is ", AWSBucket)
+
+	Public, err := ioutil.ReadFile("app.rsa.pub")
+	if err != nil {
+		log.Fatal("Error reading public key")
+		return
+	}
+
+	Private, err = ioutil.ReadFile("app.rsa")
+	if err != nil {
+		log.Fatal("Error reading private key")
+		return
+	}
+
+	FBClientID = os.Getenv("FBClientID")
+	FBClientSecret = os.Getenv("FBClientSecret")
+	RootURL = os.Getenv("RootURL")
+	if RootURL == "" {
+		RootURL = "http://localhost:8080"
+	}
+	fbConfig := &oauth2.Config{
+		// ClientId: FBAppID(string), ClientSecret : FBSecret(string)
+		// Example - ClientId: "1234567890", ClientSecret: "red2drdff6e2321e51aedcc94e19c76ee"
+
+		ClientID:     FBClientID, // change this to yours
+		ClientSecret: FBClientSecret,
+		RedirectURL:  RootURL + "/FBLogin", // change this to your webserver adddress
+		Scopes:       []string{"email"},
+		Endpoint: oauth2.Endpoint{
+			AuthURL:  "https://www.facebook.com/dialog/oauth",
+			TokenURL: "https://graph.facebook.com/oauth/access_token",
+		},
+	}
+	FBURL = fbConfig.AuthCodeURL("")
+
+	if FBClientID == "" {
+		FBURL = RootURL + "/offlineauth"
+	}
+	return
+}
+
+func main() {
+
+	MONGOSERVER, MONGODB, Public, Private, FBURL, FBClientID, FBClientSecret, RootURL, AWSBucket := checks()
 	session, err := mgo.Dial(MONGOSERVER)
 	if err != nil {
 		panic(err)
 	}
 	defer session.Close()
+
 	session.SetMode(mgo.Monotonic, true)
+	database := session.DB(MONGODB)
 
-	appC := appContext{session.DB(MONGODB)}
+	auth, err := aws.EnvAuth()
+	if err != nil {
+		panic(err)
+	}
+	s := s3.New(auth, aws.USWest2)
+	s3bucket := s.Bucket(AWSBucket)
 
-	cH := alice.New(context.ClearHandler, loggingHandler, recoverHandler, acceptHandler)
+	appC := appContext{
+		db:         database,
+		verifyKey:  []byte(Public),
+		signKey:    []byte(Private),
+		token:      "AccessToken",
+		login:      FBURL,
+		fbclientid: FBClientID,
+		fbsecret:   FBClientSecret,
+		domain:     RootURL,
+		bucket:     s3bucket,
+	}
+
+	//appC.xmain()
+	cH := alice.New(context.ClearHandler, loggingHandler, recoverHandler)
+
 	//serve assets
 	fs := http.FileServer(http.Dir("templates/assets/"))
 	http.Handle("/assets/", http.StripPrefix("/assets/", fs))
-	http.Handle("/me", cH.ThenFunc(appC.userHandler))
+	http.Handle("/me", cH.Append(appC.frontAuthHandler).ThenFunc(appC.userHandler))
+	http.Handle("/api/auth", cH.ThenFunc(appC.authHandler))
+
+	http.Handle("/api/polls/new", cH.ThenFunc(appC.newPollHandler))
+	http.Handle("/api/polls/all", cH.ThenFunc(appC.pollResultsHandler))
 	http.HandleFunc("/", landingHandler)
 
 	PORT := os.Getenv("PORT")
