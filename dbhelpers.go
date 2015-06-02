@@ -23,16 +23,12 @@ func (c *appContext) Authenticate(user *User, provider string) (*User, error) {
 	log.Println(user.PID)
 	log.Println(provider)
 
-	//err := C.Find(bson.M{"provideruid": user.PID, "provider": provider}).One(&result)
-
-	user.Provider = "facebook"
-
 	change := mgo.Change{
 		Update: bson.M{"$set": bson.M{
+			"pid":   user.PID,
 			"name":  user.Name,
 			"email": user.Email,
 			"image": user.Image,
-			"phone": user.Phone,
 		},
 		},
 		Upsert:    true,
@@ -78,38 +74,38 @@ func (c *appContext) newPollHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Println(err)
 	}
-		index := mgo.Index{
+	index := mgo.Index{
 		Key:  []string{"$2dsphere:location"},
 		Bits: 26,
 	}
 	err = polls.EnsureIndex(index)
-	if err!=nil{
-	  log.Println(err)
+	if err != nil {
+		log.Println(err)
 	}
-	
+
 	p.Timestamp = time.Now()
 	p.Powner = user.ID
 
 	err = polls.Insert(p)
 
 	if err != nil {
-    		log.Println(err)
-    		err = json.NewEncoder(w).Encode(struct{
-          Message string
-        }{err.Error()})
+		log.Println(err)
+		err = json.NewEncoder(w).Encode(struct {
+			Message string
+		}{err.Error()})
 
-    	if err != nil {
-    		log.Println(err)
-    	}
-    		
+		if err != nil {
+			log.Println(err)
+		}
+
 	}
-err = json.NewEncoder(w).Encode(struct{
-  Message string
-}{"Successful"})
+	err = json.NewEncoder(w).Encode(struct {
+		Message string
+	}{"Successful"})
 	if err != nil {
 		log.Println(err)
 	}
-	
+
 }
 func (c *appContext) pollResultsHandler(w http.ResponseWriter, r *http.Request) {
 	lat, err := strconv.ParseFloat(r.URL.Query().Get("lat"), 64)
@@ -135,11 +131,11 @@ func (c *appContext) pollResultsHandler(w http.ResponseWriter, r *http.Request) 
 			},
 		},
 	}).All(&results)
-	
+
 	if err != nil {
 		log.Println(err)
 	}
-log.Println(results)
+	log.Println(results)
 	err = json.NewEncoder(w).Encode(results)
 	if err != nil {
 		log.Println(err)

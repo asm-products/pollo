@@ -22,16 +22,16 @@ type User struct {
 }
 
 type poll struct {
-	Timestamp time.Time
-	Pname     string
-	Powner    string
-	Ptype     string
-	Images    []Images
+	Timestamp time.Time `json:"timestamp"`
+	Pname     string `json:"pname"`
+	Powner    string `json:"powner"`
+	Ptype     string `json:"ptype"`
+	Images    []Images `json:"images"`
 	Location GeoJson `json:"location"`
 	Answers   []struct {
-		ID    string
-		Text  string
-		Image string
+		ID    string  `json:"id"`
+		Text  string `json:"text"`
+		Image string `json:"image"`
 	}
 }
 
@@ -42,8 +42,8 @@ type GeoJson struct {
 
 //Images makes dealing with thumbnails and full size images easier
 type Images struct {
-	Thumb string
-	Full  string
+	Thumb string `json:"thumb"`
+	Full  string `json:"full"`
 }
 
 //lookUp holds reference data liking a providers collection eith the users
